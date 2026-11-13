@@ -1,0 +1,46 @@
+# n8n with the approval workflows and the lab workflows already imported, and
+# a stand-in that records the messages, the guarded action and lab mails.
+#   cp .env.example .env   (fill it in)   then   docker compose up -d
+# Already have n8n (Cloud or your own)? You do not need this file: see
+# "Add it to your n8n" in the README.
+
+services:
+  n8n:
+    image: ${N8N_IMAGE:-n8nio/n8n:2.47.7}
+    restart: unless-stopped
+    entrypoint: ["sh", "/bootstrap/bootstrap.sh"]
+    environment:
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?set N8N_ENCRYPTION_KEY in .env}
+      # Sent as the header X-Workflow-Key on the protected webhooks.
+      WORKFLOW_KEY: ${WORKFLOW_KEY:?set WORKFLOW_KEY in .env}
+      # The address approvers reach n8n at. Links are built from it.
+      WEBHOOK_URL: ${WEBHOOK_URL:-http://localhost:5678/}
+      # Empty: the workflows keep their defaults (stand-in, sweep every minute).
+      NOTIFY_URL: ${NOTIFY_URL:-}
+      ACTION_URL: ${ACTION_URL:-}
+      SWEEP_INTERVAL_SECONDS: ${SWEEP_INTERVAL_SECONDS:-}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./workflows:/bootstrap/workflows:ro
+      - ./lab:/bootstrap/lab:ro
+      - ./docker/bootstrap.sh:/bootstrap/bootstrap.sh:ro
+      - ./docker/prepare.mjs:/bootstrap/prepare.mjs:ro
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+
+  # Records what the workflows send. Nothing is forwarded anywhere.
+  #   GET /sink/notify?request_id=...   messages to approvers and the requester
+  #   GET /sink/action?request_id=...   runs of the guarded action
+  #   GET /mail                         mails from the lab workflow (SMTP on 2525)
+  standin:
+    image: node:22-alpine
+    restart: unless-stopped
+    command: ["node", "/app/standin.mjs"]
+    read_only: true
+    volumes:
+      - ./docker/standin.mjs:/app/standin.mjs:ro
+    ports:
+      - "${STANDIN_PORT:-8080}:8080"
+
+volumes:
+  n8n_data:

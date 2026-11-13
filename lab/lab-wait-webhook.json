@@ -1,0 +1,462 @@
+{
+  "name": "Approval lab · Wait (webhook)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Approval lab · Wait (webhook)\nA Wait node that resumes **On Webhook Call** with a time limit. `then: \"second-wait\"` adds a second approval Wait in the same execution, `then: \"pause\"` a plain timed Wait.\n\nMeasurement only. Not part of the approval pattern; see the README for what it showed.",
+        "width": 640,
+        "height": 240,
+        "color": 5
+      },
+      "id": "e46ee9fe-3ea7-469a-85f8-8d30ca0b27a6",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "approval-lab/webhook",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "c9c1560d-2659-4638-85b7-19560c6fa93e",
+      "name": "Start",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "dd0c6643-db24-42b7-8a89-50e0d5a008ed",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "approvalKey",
+          "name": "Approval Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body ?? {};\nreturn [{ json: { run: String(body.run), limit: Number(body.limit_seconds ?? 5), then: String(body.then ?? 'end'), second_limit: Number(body.second_limit_seconds ?? 30) } }];"
+      },
+      "id": "6bfd872f-a61b-4f94-84e2-56ef5600ed9f",
+      "name": "Start run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://standin:8080/sink/lab",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run: $('Start run').first().json.run, step: 'sent', execution_id: $execution.id, url: $execution.resumeUrl }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "9006df3a-454e-48fe-806e-0c56fe2551f3",
+      "name": "Send the link",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "httpMethod": "GET",
+        "responseMode": "onReceived",
+        "limitWaitTime": true,
+        "limitType": "afterTimeInterval",
+        "resumeAmount": "={{ $('Start run').first().json.limit }}",
+        "resumeUnit": "seconds",
+        "options": {}
+      },
+      "id": "f2f8c857-0f14-4c05-8026-6b40c7cb716e",
+      "name": "Wait for approval",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        0
+      ],
+      "webhookId": "61117985-c08c-4bc5-81b6-c806b5d089fd"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst resumed = data.headers !== undefined && data.query !== undefined;\nreturn [{ json: { run: $('Start run').first().json.run, step: 'after_wait', execution_id: $execution.id, outcome: resumed ? 'resumed' : 'timeout', decision: resumed ? String(data.query.decision ?? '') : '' } }];"
+      },
+      "id": "59d05164-9e42-4c8a-8a6e-251117ef7ce6",
+      "name": "What happened",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://standin:8080/sink/lab",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "e46c3d19-f11e-435d-89f0-f068ca061b1a",
+      "name": "Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "e1ae0f0c-148f-41f8-80e1-25ef884b6a1c",
+              "leftValue": "={{ $('Start run').first().json.then === 'second-wait' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "0dfeafb8-e9b0-40c2-8107-1615ccfb5ab8",
+      "name": "Second approval?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1320,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "webhook",
+        "httpMethod": "GET",
+        "responseMode": "onReceived",
+        "limitWaitTime": true,
+        "limitType": "afterTimeInterval",
+        "resumeAmount": "={{ $('Start run').first().json.second_limit }}",
+        "resumeUnit": "seconds",
+        "options": {}
+      },
+      "id": "67c416a9-b785-425a-8d1f-c3393b8e7999",
+      "name": "Second approval",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        -100
+      ],
+      "webhookId": "205bcbee-fc1d-4da7-8824-ec98eba52d48"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst resumed = data.headers !== undefined && data.query !== undefined;\nreturn [{ json: { run: $('Start run').first().json.run, step: 'after_second_wait', execution_id: $execution.id, outcome: resumed ? 'resumed' : 'timeout', decision: resumed ? String(data.query.decision ?? '') : '' } }];"
+      },
+      "id": "b646a937-ef82-4183-858d-d1b360137bad",
+      "name": "What happened then",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://standin:8080/sink/lab",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "4bc3341c-60db-4912-8b59-a29adf693f9e",
+      "name": "Report again",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        -100
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b2fe5b5f-f134-4352-8ea1-b5e296989718",
+              "leftValue": "={{ $('Start run').first().json.then === 'pause' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "5a35f6c6-206c-45a4-8789-a66479796750",
+      "name": "Pause?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1540,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": "={{ $('Start run').first().json.second_limit }}",
+        "unit": "seconds"
+      },
+      "id": "8062569e-3300-484d-82e8-cc3892877c80",
+      "name": "Pause",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1760,
+        100
+      ],
+      "webhookId": "4e825047-4d3b-4f36-862b-0ce8dbbdc04c"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://standin:8080/sink/lab",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run: $('Start run').first().json.run, step: 'after_pause', execution_id: $execution.id }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "fa6f85dc-c6c8-4e01-87e9-817ac6570e77",
+      "name": "Report the pause",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1980,
+        100
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Start run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start run": {
+      "main": [
+        [
+          {
+            "node": "Send the link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send the link": {
+      "main": [
+        [
+          {
+            "node": "Wait for approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for approval": {
+      "main": [
+        [
+          {
+            "node": "What happened",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "What happened": {
+      "main": [
+        [
+          {
+            "node": "Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Report": {
+      "main": [
+        [
+          {
+            "node": "Second approval?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Second approval?": {
+      "main": [
+        [
+          {
+            "node": "Second approval",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pause?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Second approval": {
+      "main": [
+        [
+          {
+            "node": "What happened then",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "What happened then": {
+      "main": [
+        [
+          {
+            "node": "Report again",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pause?": {
+      "main": [
+        [
+          {
+            "node": "Pause",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pause": {
+      "main": [
+        [
+          {
+            "node": "Report the pause",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "approvalLabWebhook"
+}

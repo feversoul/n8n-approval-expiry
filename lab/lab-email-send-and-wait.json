@@ -1,0 +1,190 @@
+{
+  "name": "Approval lab · Email send and wait",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Approval lab · Email send and wait\nThe Email node's **Send and Wait for Response** (approve / disapprove) with a time limit, sent to a local mail sink. The same send-and-wait mechanics as the Slack node, without Slack.\n\nMeasurement only. Not part of the approval pattern; see the README for what it showed.",
+        "width": 640,
+        "height": 240,
+        "color": 5
+      },
+      "id": "ae0a28b5-b1f1-4dde-8058-784b30265fa8",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "approval-lab/email",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "9a2d7696-0059-47d2-856e-1b6c24ec1706",
+      "name": "Start",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "abc5081a-7f95-4798-85b8-a5bcfbce228b",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "approvalKey",
+          "name": "Approval Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body ?? {};\nreturn [{ json: { run: String(body.run), limit: Number(body.limit_seconds ?? 5), then: String(body.then ?? 'end'), second_limit: Number(body.second_limit_seconds ?? 30) } }];"
+      },
+      "id": "ad02e84b-7cb8-49f3-841e-04b9d979a87e",
+      "name": "Start run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "sendAndWait",
+        "fromEmail": "n8n@example.test",
+        "toEmail": "={{ $json.run + '@example.test' }}",
+        "subject": "={{ 'Approve ' + $json.run + '?' }}",
+        "message": "Lab approval request",
+        "responseType": "approval",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double"
+          }
+        },
+        "options": {
+          "limitWaitTime": {
+            "values": {
+              "limitType": "afterTimeInterval",
+              "resumeAmount": "={{ $json.limit }}",
+              "resumeUnit": "seconds"
+            }
+          }
+        }
+      },
+      "id": "dcbfbed3-aea7-4b97-89ca-7f9ab426fe88",
+      "name": "Send and wait",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        440,
+        0
+      ],
+      "webhookId": "001ff113-dcba-4f47-80d0-bec3a009a245",
+      "credentials": {
+        "smtp": {
+          "id": "approvalLabSmtp",
+          "name": "Approval Lab SMTP"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst resumed = data.data !== undefined && data.data.approved !== undefined;\nreturn [{ json: { run: $('Start run').first().json.run, step: 'after_wait', execution_id: $execution.id, outcome: resumed ? 'resumed' : 'timeout', decision: resumed ? String((data.data.approved ? 'approve' : 'reject') ?? '') : '' } }];"
+      },
+      "id": "13ac9ec3-fc59-4dd8-8fc2-0a1dba7a57fc",
+      "name": "What happened",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://standin:8080/sink/lab",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "1670df5f-fcc6-4ae4-8206-6590dd09bea7",
+      "name": "Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        880,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Start run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start run": {
+      "main": [
+        [
+          {
+            "node": "Send and wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send and wait": {
+      "main": [
+        [
+          {
+            "node": "What happened",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "What happened": {
+      "main": [
+        [
+          {
+            "node": "Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "approvalLabEmail"
+}

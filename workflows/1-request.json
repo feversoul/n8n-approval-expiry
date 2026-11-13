@@ -1,0 +1,545 @@
+{
+  "name": "Approval · 1 Request",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Approval · Request\nOpens an approval request and sends each approver their own link. Then this workflow is **finished**: nothing waits in a Wait node, the request is a row in the data table.\n\nCall it with `{ title, details, approvers: [\"Ana\", \"Ben\"], ttl_seconds, payload }` from an **Execute Sub-workflow** node or `POST approval/request`. `payload` is handed to the guarded action when someone approves.\n\n- The row starts as `pending` with `expires_at`.\n- The link in the message points at **Approval · 2 Decide** (`approval/open?id=...&t=...`), not at a resume URL. It stays answerable for as long as the row exists.\n- Replace **Send the request** with your Slack, mail or Teams node: one item per approver with `to`, `title`, `details`, `link`, `expires_at`.\n\n`GET approval/requests?request_id=...` or `?status=pending` lists rows, `GET approval/events?request_id=...` the log.",
+        "width": 700,
+        "height": 420,
+        "color": 4
+      },
+      "id": "f4aaf2e5-9b40-40c0-8718-ebe483b50da5",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -560
+      ]
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "417047a6-53a4-4cd7-8083-87983695b389",
+      "name": "When called",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "approval/request",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "6dc06cbf-ab7d-4ecb-82c2-d79c11dd0811",
+      "name": "Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        100
+      ],
+      "webhookId": "efa00c0a-116c-4496-8122-60621fe2b572",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "approvalKey",
+          "name": "Approval Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// How long a request stays open when the caller does not say.\nconst DEFAULT_TTL_SECONDS = 86400;\n\nconst input = $input.first().json;\n// Over the webhook the request is the body; from a sub-workflow call it is the item.\nconst request = input.webhookUrl && input.body ? input.body : input;\nconst title = String(request.title ?? '').trim();\nif (!title) throw new Error('An approval request needs a title');\nconst approvers = (Array.isArray(request.approvers) ? request.approvers : [request.approvers ?? 'approver']).map((name) => String(name).trim()).filter(Boolean);\nif (approvers.length === 0) throw new Error('An approval request needs at least one approver');\nconst ttl = Number(request.ttl_seconds ?? DEFAULT_TTL_SECONDS);\nif (!(ttl > 0)) throw new Error('ttl_seconds must be a positive number');\n\nconst shared = { title, details: String(request.details ?? ''), payload: JSON.stringify(request.payload ?? {}), ttl };\n// One item for the request id and one per approver: the next node gives each a random token.\nreturn [{ json: { slot: 'request', ...shared } }, ...approvers.map((name) => ({ json: { slot: 'approver', name } }))];"
+      },
+      "id": "edd4c9c9-5295-4fde-839b-0e2d7139d661",
+      "name": "Entry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "action": "generate",
+        "dataPropertyName": "token",
+        "encodingType": "hex",
+        "stringLength": 32
+      },
+      "id": "5b06ab13-6c30-4987-83a7-e120ae041ac0",
+      "name": "Random tokens",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        440,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all().map((item) => item.json);\nconst head = items.find((item) => item.slot === 'request');\nconst approvers = items.filter((item) => item.slot === 'approver').map((item) => ({ name: item.name, token: item.token }));\nconst now = Date.now();\nreturn [{ json: {\n  request_id: head.token.slice(0, 24),\n  title: head.title,\n  details: head.details,\n  payload: head.payload,\n  status: 'pending',\n  approvers: JSON.stringify(approvers),\n  created_at: new Date(now).toISOString(),\n  // A number, so the decision and the sweep can compare it in the table filter.\n  expires_at: now + Math.round(head.ttl * 1000),\n} }];"
+      },
+      "id": "5da600b9-4790-4eac-8625-3692cbce5e94",
+      "name": "Build the request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "approval_requests"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "request_id": "={{ $json.request_id }}",
+            "title": "={{ $json.title }}",
+            "details": "={{ $json.details }}",
+            "payload": "={{ $json.payload }}",
+            "status": "={{ $json.status }}",
+            "approvers": "={{ $json.approvers }}",
+            "created_at": "={{ $json.created_at }}",
+            "expires_at": "={{ $json.expires_at }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "request_id",
+              "displayName": "request_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "details",
+              "displayName": "details",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "payload",
+              "displayName": "payload",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "approvers",
+              "displayName": "approvers",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "expires_at",
+              "displayName": "expires_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "ebcafb0c-ee01-4a7e-82f6-7ceabded2edf",
+      "name": "Save as pending",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Where approvers reach this n8n. Empty: taken from n8n itself (the same\n// address its Wait node links use, so WEBHOOK_URL applies).\nconst PUBLIC_URL = '';\n\nconst row = $input.first().json;\nconst base = (PUBLIC_URL || String($execution.resumeUrl).split('/webhook-waiting/')[0]).replace(/\\/+$/, '');\n// One message per approver. The link goes to the Decide workflow, never to a Wait node.\nreturn JSON.parse(row.approvers).map((approver) => ({ json: {\n  event: 'approval_requested',\n  request_id: row.request_id,\n  to: approver.name,\n  title: row.title,\n  details: row.details,\n  link: base + '/webhook/approval/open?id=' + row.request_id + '&t=' + approver.token,\n  expires_at: new Date(row.expires_at).toISOString(),\n} }));"
+      },
+      "id": "3efdc9c5-0dc1-49b1-883b-7a799bc0612b",
+      "name": "One message per approver",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://standin:8080/sink/notify",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "4252c926-0d50-43ae-84fe-d2d62b56827e",
+      "name": "Send the request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $('Save as pending').first().json;\nreturn [{ json: {\n  request_id: row.request_id,\n  status: row.status,\n  expires_at: new Date(row.expires_at).toISOString(),\n  approvers: JSON.parse(row.approvers).map((approver) => approver.name),\n} }];"
+      },
+      "id": "9be03d43-a0b5-429b-8f7a-80a80104d947",
+      "name": "Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "approval/requests",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "c7a72107-073d-40a0-8c6c-05f299b79e26",
+      "name": "Requests",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        420
+      ],
+      "webhookId": "5fdc9675-8458-4d24-8c7e-b9beff6812dd",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "approvalKey",
+          "name": "Approval Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "approval_requests"
+        },
+        "matchType": "anyCondition",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "request_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.query.request_id ?? '-' }}"
+            },
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "={{ $json.query.status ?? '-' }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "15a22cda-a1a7-4113-86f9-7a4037dffc8f",
+      "name": "Rows",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        220,
+        420
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const parse = (text, fallback) => { try { return JSON.parse(text); } catch { return fallback; } };\n// The approvers' tokens stay in the table.\nconst requests = $input.all().map((item) => item.json).filter((row) => row.id !== undefined).map((row) => ({\n  ...row,\n  payload: parse(row.payload, {}),\n  approvers: parse(row.approvers, []).map((approver) => approver.name),\n  expires_at_iso: new Date(row.expires_at).toISOString(),\n}));\nreturn [{ json: { requests } }];"
+      },
+      "id": "e429390b-4146-4bce-8968-48b3535cc816",
+      "name": "As a list",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "approval/events",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "2ce97e60-a784-402f-8cd7-9a365cd00d47",
+      "name": "Events",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        620
+      ],
+      "webhookId": "463f771d-d16d-45d1-8c06-87d0f05ee043",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "approvalKey",
+          "name": "Approval Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "approval_events"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "request_id",
+              "condition": "eq",
+              "keyValue": "={{ $json.query.request_id ?? '-' }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "c02888d4-69a5-4623-8152-eb3def42e14c",
+      "name": "Event rows",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        220,
+        620
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const events = $input.all().map((item) => item.json).filter((row) => row.id !== undefined)\n  .map((row) => ({ request_id: row.request_id, at: row.at, event: row.event, by: row.by, detail: row.detail }));\nreturn [{ json: { events } }];"
+      },
+      "id": "2f626da5-13c7-45ef-8dfe-be54af3990f9",
+      "name": "As a log",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        620
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When called": {
+      "main": [
+        [
+          {
+            "node": "Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request": {
+      "main": [
+        [
+          {
+            "node": "Entry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Entry": {
+      "main": [
+        [
+          {
+            "node": "Random tokens",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Random tokens": {
+      "main": [
+        [
+          {
+            "node": "Build the request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build the request": {
+      "main": [
+        [
+          {
+            "node": "Save as pending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save as pending": {
+      "main": [
+        [
+          {
+            "node": "One message per approver",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One message per approver": {
+      "main": [
+        [
+          {
+            "node": "Send the request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send the request": {
+      "main": [
+        [
+          {
+            "node": "Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Requests": {
+      "main": [
+        [
+          {
+            "node": "Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rows": {
+      "main": [
+        [
+          {
+            "node": "As a list",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Events": {
+      "main": [
+        [
+          {
+            "node": "Event rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Event rows": {
+      "main": [
+        [
+          {
+            "node": "As a log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "approvalRequest"
+}

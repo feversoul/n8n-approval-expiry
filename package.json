@@ -1,0 +1,15 @@
+{
+  "name": "n8n-approval-expiry",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Human approval in n8n that handles the late click: measured Wait node and send-and-wait behaviour on n8n 2.47.7, plus Data Table workflows where a request is decided once, expires by a sweep, and every late or repeated click gets a clear page",
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test:e2e": "node scripts/e2e.mjs",
+    "test:e2e:postgres": "node scripts/e2e.mjs postgres"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

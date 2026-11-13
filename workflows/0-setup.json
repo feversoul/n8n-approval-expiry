@@ -1,0 +1,213 @@
+{
+  "name": "Approval · 0 Setup",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Approval · Setup\nRun this once: open it and press **Execute workflow**. It creates two data tables: `approval_requests` (one row per request) and `approval_events` (every decision, expiry and late or repeated click). Running it again changes nothing.\n\nThe webhook does the same for scripted installs (`POST approval/setup`). You can delete it.",
+        "width": 560,
+        "height": 190,
+        "color": 4
+      },
+      "id": "9bb0ea4b-caeb-433a-8b52-e8ca23de1db9",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -240
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "47303158-c27d-4154-8296-82333d8ff494",
+      "name": "Run once",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "approval/setup",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "0fd26117-b056-4772-820a-62ee3b4f32c0",
+      "name": "Or call",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        180
+      ],
+      "webhookId": "de090a6a-26a2-4bc0-86d5-c87a39069df2",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "approvalKey",
+          "name": "Approval Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "table",
+        "operation": "create",
+        "tableName": "approval_requests",
+        "columns": {
+          "column": [
+            {
+              "name": "request_id",
+              "type": "string"
+            },
+            {
+              "name": "title",
+              "type": "string"
+            },
+            {
+              "name": "details",
+              "type": "string"
+            },
+            {
+              "name": "payload",
+              "type": "string"
+            },
+            {
+              "name": "status",
+              "type": "string"
+            },
+            {
+              "name": "approvers",
+              "type": "string"
+            },
+            {
+              "name": "created_at",
+              "type": "string"
+            },
+            {
+              "name": "expires_at",
+              "type": "number"
+            },
+            {
+              "name": "decided_by",
+              "type": "string"
+            },
+            {
+              "name": "decided_at",
+              "type": "string"
+            },
+            {
+              "name": "decision_id",
+              "type": "string"
+            },
+            {
+              "name": "action_status",
+              "type": "string"
+            },
+            {
+              "name": "action_result",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {
+          "createIfNotExists": true
+        }
+      },
+      "id": "8a063999-9c62-40ef-870d-5a0e78cb54e8",
+      "name": "Create approval_requests",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "table",
+        "operation": "create",
+        "tableName": "approval_events",
+        "columns": {
+          "column": [
+            {
+              "name": "request_id",
+              "type": "string"
+            },
+            {
+              "name": "at",
+              "type": "string"
+            },
+            {
+              "name": "event",
+              "type": "string"
+            },
+            {
+              "name": "by",
+              "type": "string"
+            },
+            {
+              "name": "detail",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {
+          "createIfNotExists": true
+        }
+      },
+      "id": "7035993b-d822-4d36-8cc3-98c41cc13fb0",
+      "name": "Create approval_events",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        460,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Run once": {
+      "main": [
+        [
+          {
+            "node": "Create approval_requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Or call": {
+      "main": [
+        [
+          {
+            "node": "Create approval_requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create approval_requests": {
+      "main": [
+        [
+          {
+            "node": "Create approval_events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "approvalSetup"
+}

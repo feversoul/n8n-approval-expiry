@@ -1,0 +1,503 @@
+{
+  "name": "Approval · 3 Sweep",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Approval · Sweep\nRuns every minute and closes what nobody answered: one update sets every row that is still `pending` and past `expires_at` to `expired`. This is the timeout branch. It runs from the table, so it survives a restart and does not depend on a paused execution.\n\nA late click is already refused before this runs (the decision checks `expires_at` itself). The sweep makes the row say so and tells the requester once: replace **Timeout branch** with what should happen when nobody answered.\n\n`POST approval/sweep` runs it on demand.",
+        "width": 700,
+        "height": 300,
+        "color": 4
+      },
+      "id": "7e5c36b1-88b1-4643-8962-dfd975200810",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -420
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "33e29d00-2783-4e96-8c56-1116e54a7ee2",
+      "name": "Every minute",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "approval/sweep",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "ac2cb8b2-37f6-4390-8286-46a1523ec972",
+      "name": "Or call",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        100
+      ],
+      "webhookId": "7d47196e-5e09-4c31-8468-e428e103cfe4",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "approvalKey",
+          "name": "Approval Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const hex = () => Math.floor(Math.random() * 0x100000000).toString(16).padStart(8, '0');\nconst now = Date.now();\nreturn [{ json: { now, at: new Date(now).toISOString(), sweep_id: 'sweep-' + $execution.id + '-' + hex() + hex() } }];"
+      },
+      "id": "5ba3babe-8053-4899-868f-8194dde80bf8",
+      "name": "Now",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "approval_requests"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "status",
+              "condition": "eq",
+              "keyValue": "pending"
+            },
+            {
+              "keyName": "expires_at",
+              "condition": "lte",
+              "keyValue": "={{ $json.now }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "expired",
+            "decided_by": "timeout",
+            "decided_at": "={{ $json.at }}",
+            "decision_id": "={{ $json.sweep_id }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decided_by",
+              "displayName": "decided_by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decided_at",
+              "displayName": "decided_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "decision_id",
+              "displayName": "decision_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "799954cb-a270-434e-81aa-45123340777a",
+      "name": "Expire what is overdue",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        0
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const sweep = $('Now').first().json;\n// Only rows this run expired. A row that was approved in the same instant\n// can come back from the update on SQLite; its decision_id is not ours.\nconst expired = $input.all().map((item) => item.json)\n  .filter((row) => row.id !== undefined && row.status === 'expired' && row.decision_id === sweep.sweep_id)\n  .map((row) => ({ request_id: row.request_id, title: row.title, payload: row.payload, expires_at: new Date(row.expires_at).toISOString() }));\nreturn [{ json: { expired } }];"
+      },
+      "id": "a2084634-3269-4b14-8ee4-00d20513a160",
+      "name": "Mine only",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b2114a80-434f-4204-846a-3f2dcf87d730",
+              "leftValue": "={{ $json.expired.length > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "looseTypeValidation": true
+        }
+      },
+      "id": "f07c69d0-61ba-4281-82dd-357b56e9a38d",
+      "name": "Any?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const sweep = $('Now').first().json;\nreturn $input.first().json.expired.map((row) => ({ json: {\n  request_id: row.request_id, at: sweep.at, event: 'expired', by: 'timeout', detail: 'deadline was ' + row.expires_at,\n} }));"
+      },
+      "id": "924bd4ce-185a-4454-8e4f-d495caf7ec85",
+      "name": "One event each",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "approval_events"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "request_id": "={{ $json.request_id }}",
+            "at": "={{ $json.at }}",
+            "event": "={{ $json.event }}",
+            "by": "={{ $json.by }}",
+            "detail": "={{ $json.detail }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "request_id",
+              "displayName": "request_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "at",
+              "displayName": "at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "event",
+              "displayName": "event",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "by",
+              "displayName": "by",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "detail",
+              "displayName": "detail",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "e2a33da2-8df0-49c5-880b-56fb691df9bb",
+      "name": "Log the expiry",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1320,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const expired = $('Mine only').first().json.expired;\nreturn expired.map((row) => ({ json: { event: 'expired', request_id: row.request_id, title: row.title, payload: JSON.parse(row.payload), expired_at: row.expires_at } }));"
+      },
+      "id": "005f7b83-a3e5-4e39-8aad-78ce2755645c",
+      "name": "One message each",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://standin:8080/sink/notify",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "a5ce2be1-8e29-4ee8-8752-b2116c97533d",
+      "name": "Timeout branch",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1760,
+        -80
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify({ expired: $('Mine only').first().json.expired.map((row) => row.request_id) }) }}",
+        "options": {}
+      },
+      "id": "b492ea16-10b0-4d2c-867d-ae83246934e2",
+      "name": "Summary",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1980,
+        -80
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify({ expired: [] }) }}",
+        "options": {}
+      },
+      "id": "ca810ff8-38d6-40b3-81cf-268ecd8ad7c9",
+      "name": "Nothing due",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1100,
+        100
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every minute": {
+      "main": [
+        [
+          {
+            "node": "Now",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Or call": {
+      "main": [
+        [
+          {
+            "node": "Now",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Now": {
+      "main": [
+        [
+          {
+            "node": "Expire what is overdue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expire what is overdue": {
+      "main": [
+        [
+          {
+            "node": "Mine only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mine only": {
+      "main": [
+        [
+          {
+            "node": "Any?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any?": {
+      "main": [
+        [
+          {
+            "node": "One event each",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Nothing due",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One event each": {
+      "main": [
+        [
+          {
+            "node": "Log the expiry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log the expiry": {
+      "main": [
+        [
+          {
+            "node": "One message each",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "One message each": {
+      "main": [
+        [
+          {
+            "node": "Timeout branch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Timeout branch": {
+      "main": [
+        [
+          {
+            "node": "Summary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "approvalSweep"
+}

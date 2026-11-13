@@ -1,0 +1,231 @@
+{
+  "name": "Approval lab · Wait (form)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Approval lab · Wait (form)\nA Wait node that resumes **On Form Submitted** with a time limit.\n\nMeasurement only. Not part of the approval pattern; see the README for what it showed.",
+        "width": 640,
+        "height": 240,
+        "color": 5
+      },
+      "id": "ba30bb7d-1c2b-4493-8dad-e905a1637a60",
+      "name": "About",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -40,
+        -360
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "approval-lab/form",
+        "authentication": "headerAuth",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "f9bff6e2-dd01-433d-8188-c8f87809354b",
+      "name": "Start",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "cc121cf3-6c17-445a-8cff-53b1b64cc393",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "approvalKey",
+          "name": "Approval Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body ?? {};\nreturn [{ json: { run: String(body.run), limit: Number(body.limit_seconds ?? 5), then: String(body.then ?? 'end'), second_limit: Number(body.second_limit_seconds ?? 30) } }];"
+      },
+      "id": "a2279dc2-bf79-4fc5-88eb-04048d102f9d",
+      "name": "Start run",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://standin:8080/sink/lab",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ run: $('Start run').first().json.run, step: 'sent', execution_id: $execution.id, url: $execution.resumeFormUrl }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "ae5050f5-0f47-4ba0-89ca-6b0d45aa36f3",
+      "name": "Send the link",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "resume": "form",
+        "formTitle": "Approve the request?",
+        "formDescription": "Lab form",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Decision",
+              "fieldType": "dropdown",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "approve"
+                  },
+                  {
+                    "option": "reject"
+                  }
+                ]
+              },
+              "requiredField": true
+            }
+          ]
+        },
+        "responseMode": "onReceived",
+        "limitWaitTime": true,
+        "limitType": "afterTimeInterval",
+        "resumeAmount": "={{ $('Start run').first().json.limit }}",
+        "resumeUnit": "seconds",
+        "options": {}
+      },
+      "id": "c2bf9735-b296-4b92-8216-405fad6927ad",
+      "name": "Wait for approval",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        0
+      ],
+      "webhookId": "91c2ccff-0362-40d0-8417-6d12ddfaf518"
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst resumed = data.submittedAt !== undefined;\nreturn [{ json: { run: $('Start run').first().json.run, step: 'after_wait', execution_id: $execution.id, outcome: resumed ? 'resumed' : 'timeout', decision: resumed ? String(data.Decision ?? '') : '' } }];"
+      },
+      "id": "aa232367-89fd-4da5-83a8-0c4d7281b8c7",
+      "name": "What happened",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://standin:8080/sink/lab",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 10000
+        }
+      },
+      "id": "4297b04e-be02-465b-8c70-fa5cdb413ade",
+      "name": "Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Start run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start run": {
+      "main": [
+        [
+          {
+            "node": "Send the link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send the link": {
+      "main": [
+        [
+          {
+            "node": "Wait for approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for approval": {
+      "main": [
+        [
+          {
+            "node": "What happened",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "What happened": {
+      "main": [
+        [
+          {
+            "node": "Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "id": "approvalLabForm"
+}
