@@ -58,7 +58,9 @@ async function click(url, options = {}, waitMs = 10_000) {
 }
 const short = (answer) => `${answer.status || ''} ${answer.text.replace(/\\?"/g, "'").slice(0, 110)}`.trim();
 const sink = async (name, query = '') => (await (await fetch(`${STANDIN}/sink/${name}?${query}`)).json()).items;
-const ready = () => until(async () => (await fetch(`${BASE}/webhook/approval/setup`, { method: 'POST', headers, body: '{}' })).status === 200, 240_000, 1000);
+// While n8n starts, every path answers 200 with a "starting up" page.
+const answered = async (response) => response.status === 200 && !(await response.text()).startsWith('n8n is starting up');
+const ready = () => until(async () => answered(await fetch(`${BASE}/webhook/approval/setup`, { method: 'POST', headers, body: '{}' })), 240_000, 1000);
 
 before(ready);
 
@@ -311,7 +313,9 @@ test('approve: the page has two buttons, opening it decides nothing, the button 
     assert.equal(page.status, 200);
     assert.match(page.body, /<form method="post" action="decide">/);
     assert.match(page.body, /value="approve"/);
-    assert.match(page.headers.get('content-security-policy') ?? 'allow-forms', /allow-forms/, 'n8n sandboxes the page but lets the form post');
+    const sandbox = page.headers.get('content-security-policy');
+    assert.ok(sandbox, 'n8n sends a sandbox header with the page');
+    assert.match(sandbox, /allow-forms/, 'n8n sandboxes the page but lets the form post');
   }
   assert.equal((await row(request.id)).status, 'pending');
   assert.equal((await actions(request.id)).length, 0);
